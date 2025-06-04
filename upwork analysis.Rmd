@@ -1,0 +1,510 @@
+---
+title: "upwork data scientist analysis"
+author: "omon das"
+date: "`r Sys.Date()`"
+output:
+  prettydoc::html_pretty:
+    theme: hpstr
+    toc: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning  = FALSE)
+knitr::opts_chunk$set(message  = FALSE)
+
+```
+
+
+
+```{r}
+library(tidyverse)
+library(mlr)
+library(naniar)
+library(clusterSim)
+library(clValid)
+
+```
+
+```{r}
+
+upwork=read_csv("D:\\wallpapers and photos\\csv\\upwork_data_scientists_.csv")
+
+upwork
+```
+
+
+```{r}
+up=upwork %>% 
+  dplyr::select(c(-description,-title)) %>% 
+  separate(col = skills, into = c("skill1","skill2","skill3","skill4"),sep = "\\|") %>% 
+  mutate(jobSuccess=str_remove(jobSuccess,"\\%"),jobSuccess=as.numeric(jobSuccess),jobSuccess=if_else(jobSuccess>95,"high","low")) 
+
+
+
+up
+
+```
+
+
+```{r}
+
+up.num=up %>%
+  select_if(is.numeric)
+
+up.num
+
+
+ggplot(up.num,aes(x=totalHours))+
+  geom_density()
+
+
+impute=imputeLearner("regr.rpart")
+ 
+imputed=impute(up.num,classes = list(numeric=impute))
+
+
+
+up.imp=imputed$data
+
+
+up.imp
+
+ggplot(up.imp,aes(x=totalHours,fill=totalJobs))+
+  geom_density()
+
+```
+
+
+```{r}
+#dimension reduction
+
+####
+
+#pca
+
+up.scale=up.imp %>% scale()
+
+
+pca=prcomp(up.scale)
+
+summary(pca)
+
+pca.data=up %>% 
+  mutate_if(is.numeric,scale,scale=FALSE ) %>% 
+  mutate(pca1=pca$x[,1],pca2=pca$x[,2])
+
+
+
+
+ggplot(pca.data) +
+  aes(x = pca1, y = pca2, colour = jobSuccess) +
+  geom_point(shape = "circle", size = 1.5) +
+  labs(title = "pca plot in terms of success") +
+  theme_minimal() +
+  theme(
+    legend.position = "top",
+    plot.title = element_text(size = 15L,
+    face = "bold",
+    hjust = 0.5)
+  )
+
+pca.plot=ggplot(pca.data) +
+  aes(x = pca1, y = pca2, colour = jobSuccess) +
+  geom_point(shape = "circle", size = 1.5) +
+  labs(title = "pca plot in terms of success") +
+  theme_minimal() +
+  theme(
+    legend.position = "top",
+    plot.title = element_text(size = 15L,
+    face = "bold",
+    hjust = 0.5)
+  )+
+  facet_wrap(~country)
+
+
+plotly::ggplotly(pca.plot)
+
+```
+
+
+
+```{r}
+library(Rtsne)
+
+tsne=Rtsne(up.scale,preplexity=5,theta = 0,max_iter = 900)
+
+tsne.data=up %>% 
+  mutate_if(is.numeric,scale,scale=FALSE ) %>% 
+  mutate(tsne1=tsne$Y[,1],tsne2=tsne$Y[,2])
+
+ggplot(tsne.data) +
+  aes(x = tsne1, y = tsne2, colour = jobSuccess) +
+  geom_point(shape = "circle", size = 1.5) +
+  labs(title = "pca plot in terms of success") +
+  theme_minimal() +
+  theme(
+    legend.position = "top",
+    plot.title = element_text(size = 15L,
+    face = "bold",
+    hjust = 0.5)
+  )
+
+tsne.plot=ggplot(tsne.data) +
+  aes(x = tsne1, y = tsne2, colour = jobSuccess) +
+  geom_point(shape = "circle", size = 1.5) +
+  labs(title = "tsne plot in terms of success") +
+  theme_minimal() +
+  theme(
+    legend.position = "top",
+    plot.title = element_text(size = 15L,
+    face = "bold",
+    hjust = 0.5)
+  )+
+  facet_wrap(~country)
+plotly::ggplotly(tsne.plot)
+```
+
+
+
+```{r}
+
+library(umap)
+
+umap=umap(up.scale,n_neighbors=5,metric="manhattan",n_epochs=600,min_dist=0.05)
+
+umap.data=up %>% 
+  mutate_if(is.numeric,scale,scale=FALSE) %>% 
+  mutate(umap1=umap$layout[,1],umap2=umap$layout[,2])
+
+
+umap.plot=ggplot(umap.data) +
+  aes(x = umap1, y = umap2, colour = jobSuccess) +
+  geom_point(shape = "circle", size = 1.5) +
+  labs(title = "pca plot in terms of success") +
+  theme_minimal() +
+  theme(
+    legend.position = "top",
+    plot.title = element_text(size = 15L,
+    face = "bold",
+    hjust = 0.5)
+  )+
+  facet_wrap(~country)
+plotly::ggplotly(umap.plot)
+
+
+ggplot(umap.data) +
+  aes(x = umap1, y = umap2, colour = jobSuccess) +
+  geom_point(shape = "circle", size = 1.5) +
+  labs(title = "umap plot in terms of success") +
+  theme_minimal() +
+  theme(
+    legend.position = "top",
+    plot.title = element_text(size = 15L,
+    face = "bold",
+    hjust = 0.5)
+  )
+
+
+```
+
+
+
+```{r}
+library(kohonen)
+
+somgrid=somgrid(xdim = 3, ydim = 3, topo =  "rectangular",
+        neighbourhood.fct = "bubble", toroidal = FALSE)
+
+som=supersom(up.scale,somgrid,alpha = c(0.1,0.01),rlen = 2000)
+
+som
+
+type = c("codes", "changes", "counts","dist.neighbours", "mapping", "quality")
+
+
+
+purrr::map(type,function(x){
+  plot(som,type=x,shape="straight")
+})
+
+```
+
+
+
+```{r}
+###lle
+
+library(Rdimtools)
+
+lle=do.lle(up.scale,2,type=c("knn",5))
+
+lle.data=up %>% 
+  mutate_if(is.numeric,scale,scale=FALSE) %>% 
+  mutate(lle1=lle$Y[,1],lle2=lle$Y[,2])
+
+
+lle.plot=ggplot(lle.data) +
+  aes(x = lle1, y = lle2, colour = jobSuccess) +
+  geom_point(shape = "circle", size = 1.5) +
+  labs(title = "pca plot in terms of success") +
+  theme_minimal() +
+  theme(
+    legend.position = "top",
+    plot.title = element_text(size = 15L,
+    face = "bold",
+    hjust = 0.5)
+  )+
+  facet_wrap(~country)
+plotly::ggplotly(lle.plot)
+
+
+ggplot(lle.data) +
+  aes(x = lle1, y = lle2, colour = jobSuccess) +
+  geom_point(shape = "circle", size = 1.5) +
+  labs(title = "LLE plot in terms of success") +
+  theme_minimal() +
+  theme(
+    legend.position = "top",
+    plot.title = element_text(size = 15L,
+    face = "bold",
+    hjust = 0.5)
+  )
+
+
+```
+
+
+
+
+
+
+
+```{r}
+
+
+###now for clustering 
+
+###kmeans cluustering
+
+
+library(factoextra)
+
+library(cluster)
+library(clValid)
+library(stats)
+
+up.scale.df=as.data.frame(up.scale)
+
+
+
+
+#for the optimal amount of cluster
+
+fviz_nbclust(up.scale,FUNcluster =stats::kmeans,method = c("gap_stat"))
+
+
+
+
+fviz_nbclust(up.scale,FUNcluster =stats:: kmeans,method = c("silhouette"))
+
+
+cluster=clValid(up.scale,nClust = 2:10,clMethods = "kmeans",validation = "internal",metric = "euclidean")
+
+cluster
+
+summary(cluster)
+
+```
+
+```{r}
+#thus let us choose the optimal cluster 2
+
+kmean=kmeans(up.scale.df,centers = 2,nstart = 100,iter.max=600)
+
+
+kmeans=fviz_cluster(kmean,up.scale,repel = F,ellipse.type = "euclid",star.plot=T,geom = "text",show_labels=T) + theme(panel.background = element_rect(fill = "aliceblue"))
+
+plotly::ggplotly(kmeans)
+```
+
+```{r}
+##now for hierarchical clustering
+
+#there are two type of hierarchical clustering algorithm mainly 
+library(cluster)
+purrr::map(c("stability","internal"),function(x){
+hl=clValid(up.scale.df,nClust = 3:6,clMethods = "agnes",validation = x,method = "complete",metric = "euclidean")
+
+
+summary(hl)
+
+hl
+})
+
+
+purrr::map(c("stability","internal"),function(x){
+h2=clValid(up.scale.df,nClust = 3:6,clMethods = "agnes",validation = x,method = "ward",metric = "euclidean")
+
+
+summary(h2)
+
+h2
+})
+
+```
+
+
+
+```{r}
+library(cluster)
+##cluster::agnes
+
+hcut.agg=agnes(up.scale,metric = "euclidean",method = "complete")
+
+h.clust=cutree(hcut.agg,k=3)
+
+fviz_dend(hcut.agg,3,type="phylogenic",show_labels = T)
+
+fviz_cluster(list(data = up.scale.df, cluster = h.clust))
+
+
+```
+
+
+
+```{r}
+#dicisive clustering
+purrr::map(c("stability","internal"),function(x){
+
+diana=clValid(up.scale.df,nClust = 3:10,clMethods = "diana",metric = "euclidean",validation = x)
+
+summary(diana)
+diana
+})
+
+```
+
+
+
+```{r}
+diana.clust=cluster::diana(up.scale.df,metric = "euclidean")
+
+diana.cut=cutree(diana.clust,k=3)
+fviz_dend(diana.clust,k=3,type = "phylogenic")
+
+fviz_cluster(list(data=up.scale.df,cluster=diana.cut))
+
+```
+
+
+```{r}
+#model based clustering
+
+#automated
+
+library(mclust)
+
+mc=Mclust(up.scale.df)
+
+#6 cluster found 6
+summary(mc)
+
+
+fviz_mclust(mc,"classification",ellipse.type="convex",geom =  "text")
+fviz_mclust(mc,"uncertainty")
+fviz_mclust(mc,"BIC")
+
+mc.clust=cbind(pca.data,cluster=factor(mc$classification))
+
+               
+               
+
+ggplot(mc.clust) +
+ aes(x = pca1, y = pca2, colour = cluster) +
+ geom_point(shape = "circle", size = 1.5) +
+ scale_color_hue(direction = 1) +
+ theme_minimal()
+
+
+
+
+
+
+
+
+```
+
+
+```{r}
+mc.optimal=clValid(up.scale.df,nClust =2:10,clMethods = "model",validation = "stability")
+
+
+summary(mc.optimal)
+
+#it seems Mclust choose FOM
+
+```
+
+
+```{r}
+library(fpc)
+library(dbscan)
+
+kNNdistplot(up.scale.df,k=4)
+abline(h=1.8)
+
+
+```
+
+```{r}
+purrr::map(4:40,function(x){
+  
+density=dbscan::dbscan(up.scale,eps = 1.8,minPts = x)
+
+density
+})
+```
+
+
+
+
+```{r}
+
+
+density=fpc::dbscan(up.scale,eps = 1.8,MinPts = 4,showplot = 1)
+
+density
+
+fviz_cluster(density,up.scale.df)
+
+
+```
+
+
+
+```{r}
+
+purrr::map(2:9,function(x){
+
+hdbscan=dbscan::hdbscan(up.scale,x)
+hdbscan
+  })
+
+hdbscan=dbscan::hdbscan(up.scale,4)
+hdbscan
+
+
+dd=cbind(pca.data,cluster=factor(hdbscan$cluster))
+
+
+dd
+
+ggplot(dd) +
+  aes(x = pca1, y = pca2, colour = cluster) +
+  geom_point(shape = "circle", size = 1.5) +
+  scale_color_hue(direction = 1) +
+  theme_minimal() 
+
+```
+
